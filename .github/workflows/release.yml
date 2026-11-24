@@ -1,0 +1,216 @@
+name: Release
+
+# Push a tag like v0.1.0 (matching the version in Cargo.toml) to build and publish a release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  # Compiled into release builds so Help > Check for updates reads this release feed.
+  LARIK_TEXT_UPDATE_FEED: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+
+jobs:
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  macos:
+    name: macOS (Apple Silicon)
+    needs: verify
+    runs-on: macos-15
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      # Notarization runs only when these repository secrets exist.
+      HAVE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: xcodebuild -downloadComponent MetalToolchain || true
+
+      - name: Import the Developer ID certificate
+        if: env.HAVE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$RUNNER_TEMP/build.keychain"
+          security default-keychain -s "$RUNNER_TEMP/build.keychain"
+          security unlock-keychain -p ci "$RUNNER_TEMP/build.keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$RUNNER_TEMP/build.keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$RUNNER_TEMP/build.keychain"
+          identity=$(security find-identity -v -p codesigning "$RUNNER_TEMP/build.keychain" \
+            | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "LARIK_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize
+        if: env.HAVE_CERT == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: packaging/notarize.sh
+
+      - name: Build (ad-hoc signed)
+        if: env.HAVE_CERT != 'true'
+        run: |
+          packaging/macos.sh
+          ditto -c -k --keepParent "dist/Larik Text.app" "dist/Larik-Text-$VERSION-macos-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/Larik-Text-*-macos-arm64.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64)
+    needs: verify
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Point GPUI at the Windows shader compiler
+        shell: pwsh
+        run: |
+          $fxc = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\fxc.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          "GPUI_FXC_PATH=$($fxc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - run: cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "Larik-Text-$env:VERSION-windows-x64"
+          New-Item -ItemType Directory "stage/$name/licenses" -Force | Out-Null
+          Copy-Item target/release/larik-text.exe "stage/$name/"
+          Copy-Item README.md, LICENSE, assets/larik-text.ico, assets/larik-document.ico, packaging/windows/Register-LarikText.ps1 "stage/$name/"
+          Copy-Item assets/fonts/*-OFL.txt "stage/$name/licenses/"
+          Compress-Archive -Path "stage/$name" -DestinationPath "$name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: Larik-Text-*-windows-x64.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (${{ matrix.label }})
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, label: x64 }
+          - { runner: ubuntu-24.04-arm, label: arm64 }
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config libfontconfig1-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libvulkan-dev libwayland-dev libx11-xcb-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb-dev \
+            libasound2-dev libssl-dev
+
+      - run: cargo build --release --locked
+
+      - name: Package
+        run: |
+          name="Larik-Text-$VERSION-linux-${{ matrix.label }}"
+          mkdir -p "stage/$name/licenses"
+          install -m 755 target/release/larik-text "stage/$name/larik-text"
+          install -m 755 packaging/linux/install.sh "stage/$name/install.sh"
+          cp packaging/linux/larik-text.desktop README.md LICENSE assets/app-icon.svg \
+            assets/document-icon.svg "stage/$name/"
+          cp assets/fonts/*-OFL.txt "stage/$name/licenses/"
+          tar -czf "$name.tar.gz" -C stage "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.label }}
+          path: Larik-Text-*-linux-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: [verify, macos, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Checksums and update feed
+        run: |
+          cd artifacts
+          sha256sum Larik-Text-* > SHA256SUMS.txt
+          python3 - <<'PY'
+          import json, os, hashlib
+          version = os.environ["VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          keys = {
+              f"Larik-Text-{version}-macos-arm64.zip": "macos-aarch64",
+              f"Larik-Text-{version}-windows-x64.zip": "windows-x86_64",
+              f"Larik-Text-{version}-linux-x64.tar.gz": "linux-x86_64",
+              f"Larik-Text-{version}-linux-arm64.tar.gz": "linux-aarch64",
+          }
+          downloads = {}
+          for name, key in keys.items():
+              with open(name, "rb") as f:
+                  digest = hashlib.sha256(f.read()).hexdigest()
+              downloads[key] = {
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "sha256": digest,
+              }
+          feed = {
+              "version": version,
+              "url": f"https://github.com/{repo}/releases/tag/{tag}",
+              "downloads": downloads,
+          }
+          json.dump(feed, open("latest.json", "w"), indent=2)
+          PY
+          cat latest.json
+
+      - name: Create the release
+        run: |
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "Larik Text $VERSION" --generate-notes $prerelease

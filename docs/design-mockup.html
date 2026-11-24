@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Foldrest is a design concept for a single-file text and code editor. Preview Python, Markdown, plain text, and the welcome screen in light or dark.">
+<title>Foldrest · Editor design proposal</title>
+<style>
+@font-face{font-family:Instrument Sans;src:url(assets/fonts/instrument-sans.woff2) format("woff2");font-weight:400 700;font-display:swap}
+@font-face{font-family:Instrument Serif;src:url(assets/fonts/instrument-serif.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:Source Code Pro;src:url(assets/fonts/source-code-pro.woff2) format("woff2");font-weight:400;font-display:swap}
+:root{
+  --canvas:#F4EFE4;--paper:#FFFCF5;--linen:#F7F1E6;--wash:#F0E8D9;--ink:#24372E;--muted:#56635A;
+  --moss:#284939;--cream:#FFF4DC;--apricot:#F6AF83;--sienna:#9F402A;--rule:#DCD2BF;--focus:#9F402A;
+  --violet:#734277;--fern:#376040;--blue:#365D78;--umber:#8A461E;
+  --night:#222823;--night-chrome:#2A322B;--night-line:#333D34;--night-ink:#EEE8D8;--night-muted:#B4BDAC;
+  --night-rule:#435045;--night-violet:#E6B7E9;--night-fern:#ADD19B;--night-blue:#ABCBE8;--night-umber:#F6B282;
+  --sans:"Instrument Sans",system-ui,sans-serif;--serif:"Instrument Serif",Georgia,serif;
+  --mono:"Source Code Pro",ui-monospace,monospace;
+  --type-small:12px;--type-control:14px;--type-body:16px;--type-intro:18px;
+  --type-headline:clamp(61px,6.6vw,104px);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--canvas);color:var(--ink);font:400 16px/1.55 var(--sans)}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;cursor:pointer}
+a:focus-visible,button:focus-visible,.code:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+svg{display:block}
+p,h1,h2,h3,figure{margin:0}
+h1,h2,h3{font-weight:400}
+.wrap{width:min(100% - 96px,1240px);margin-inline:auto}
+.top{border-bottom:1px solid var(--rule)}
+.top .wrap,.bottom .wrap{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{min-height:44px;display:inline-flex;align-items:center;gap:8px;font:400 32px/1 var(--serif);letter-spacing:-.02em}
+.brand svg{width:32px;height:32px}
+.top .wrap{min-height:72px}
+nav{display:flex;gap:24px}
+nav a{display:grid;align-items:center;min-height:44px;font-size:var(--type-control);font-weight:600}
+nav a:hover{color:var(--sienna)}
+.hero{display:grid;grid-template-columns:minmax(264px,.75fr) minmax(0,1.65fr);gap:48px;align-items:center;padding-block:64px 72px}
+.eyebrow,.caption,.swatch small{font:400 12px/1.5 var(--mono)}
+.eyebrow{color:var(--sienna);letter-spacing:.07em;text-transform:uppercase}
+h1{font:400 var(--type-headline)/.91 var(--serif);letter-spacing:-.035em;margin-block:16px 20px}
+.intro p:not(.eyebrow){max-width:28ch;color:var(--muted);font-size:var(--type-intro);line-height:1.5}
+.preview{min-width:0}
+.preview-controls{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:12px}
+.states{display:flex;flex-wrap:wrap;gap:4px}
+.preview-controls button{white-space:nowrap;border:1px solid transparent;background:transparent;border-radius:8px;min-height:44px;padding:0 12px;font-size:var(--type-control);font-weight:600}
+.preview-controls button:hover{background:var(--wash)}
+.preview-controls button[aria-pressed=true]{border-color:var(--moss);background:var(--moss);color:var(--cream)}
+.preview-controls .theme{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-color:var(--rule);min-width:44px}
+.glyph{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.window{
+  --editor:var(--paper);--chrome:var(--linen);--line:var(--wash);--text:var(--ink);--secondary:var(--muted);
+  --edge:var(--rule);--caret:var(--sienna);--keyword:var(--violet);--string:var(--fern);--function:var(--blue);--number:var(--umber);
+  min-height:432px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  border:1px solid var(--edge);border-radius:12px;overflow:hidden;background:var(--editor);color:var(--text);
+  box-shadow:0 24px 52px -30px #4A372B66;
+}
+.window[data-theme=dark]{
+  color-scheme:dark;--editor:var(--night);--chrome:var(--night-chrome);--line:var(--night-line);
+  --text:var(--night-ink);--secondary:var(--night-muted);--edge:var(--night-rule);--caret:var(--apricot);
+  --keyword:var(--night-violet);--string:var(--night-fern);--function:var(--night-blue);--number:var(--night-umber);
+  --focus:var(--apricot);
+}
+.titlebar,.status{background:var(--chrome);padding-inline:16px;display:flex;align-items:center;color:var(--secondary)}
+.titlebar{min-height:52px;border-bottom:1px solid var(--edge);display:grid;grid-template-columns:1fr minmax(0,auto) 1fr;gap:12px}
+.window-dots,.tools,.file-label,.status-side,.dirty{display:flex;align-items:center;gap:8px}
+.window-dots span{width:10px;height:10px;border-radius:50%;background:#DE8A75}
+.window-dots span:nth-child(2){background:#DAB065}
+.window-dots span:nth-child(3){background:#8CB08B}
+.file-label{max-width:100%;font-size:var(--type-control);font-weight:600;color:var(--text)}
+.file-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tools{justify-self:end;gap:12px}
+.status{justify-content:space-between;gap:8px;flex-wrap:wrap;min-height:36px;border-top:1px solid var(--edge);font-size:var(--type-small);font-weight:500}
+.status-side{gap:12px;flex-wrap:wrap}
+.dirty{color:var(--caret);font-weight:600}
+.dirty::before{content:"";width:6px;height:6px;background:currentColor;border-radius:50%}
+.editor-view{min-width:0;min-height:0;display:grid}
+.editor-view.markdown{grid-template-columns:1fr 1fr}
+.code{min-width:0;max-width:100%;overflow:auto;align-self:start;padding-block:24px;margin:0;line-height:1.7;font:400 14px/1.75 var(--mono);outline-offset:-3px!important}
+.code code{display:block;min-width:max-content;font:inherit}
+.row{display:block;padding-right:16px;white-space:pre}
+.row:before{content:attr(data-line);display:inline-block;width:32px;box-sizing:content-box;padding-inline:8px 16px;color:var(--secondary);text-align:right}
+.row.current{background:var(--line)}
+.keyword{color:var(--keyword)}
+.string{color:var(--string)}
+.function{color:var(--function)}
+.number{color:var(--number)}
+.comment{color:var(--secondary)}
+.caret{display:inline-block;height:1.05em;width:2px;vertical-align:-.18em;background:var(--caret)}
+.plain-text{align-content:start;gap:12px;padding:24px;font:400 14px/1.75 var(--mono)}
+.plain-text p{max-width:68ch}
+.markdown .row:before{width:16px;padding-inline:8px 12px}
+.markdown-render{min-width:0;background:var(--chrome);padding:24px;border-left:1px solid var(--edge)}
+.markdown-render .caption{color:var(--secondary);margin-bottom:16px}
+.markdown-render h3{font:400 36px/1.05 var(--serif);margin-bottom:12px}
+.markdown-render p,.markdown-render li{font-size:var(--type-control)}
+.markdown-render ul{padding-left:20px}
+.welcome{place-items:center;text-align:center;padding:24px}
+.welcome .mark{width:56px;height:56px;margin:0 auto 12px}
+.welcome h3{font:400 40px/1 var(--serif)}
+.welcome p{color:var(--secondary);font-size:var(--type-control);margin-block:8px 20px}
+.open-example{display:inline-flex;align-items:center;gap:16px;border-radius:8px;padding:12px 16px;background:var(--moss);color:var(--cream);font-size:var(--type-control);font-weight:600}
+kbd{font:400 12px/1.5 var(--mono)}
+.preview figcaption{color:var(--muted);margin-top:12px}
+.design-section{border-top:1px solid var(--rule);padding-block:40px 56px}
+.section-heading{font:400 52px/1 var(--serif);letter-spacing:-.015em;margin-block:4px 28px}
+.identity{display:grid;grid-template-columns:1.15fr 1fr;gap:48px}
+.identity h3,.theme-group h3,.flow h3{font-size:var(--type-body);font-weight:650;margin-bottom:8px}
+.identity p,.flow p{color:var(--muted);max-width:48ch}
+.logo-board{display:flex;align-items:center;justify-content:center;gap:16px;background:var(--moss);color:var(--cream);min-height:176px;border-radius:12px;font:400 clamp(44px,6vw,88px)/1 var(--serif);letter-spacing:-.025em;margin-bottom:16px}
+.logo-board svg{width:72px;height:72px}
+.icon-scale{display:flex;align-items:end;gap:24px;margin-bottom:16px}
+.icon-scale div{display:grid;justify-items:center;gap:8px}
+.icon-scale small{font:400 12px/1.5 var(--mono);color:var(--muted)}
+.faces{display:grid;gap:8px}
+.specimen{border-bottom:1px solid var(--rule);padding-block:8px 12px}
+.specimen span{display:block;color:var(--muted);font-size:var(--type-control)}
+.specimen p{color:var(--ink);line-height:1.12}
+.specimen.serif p{font:400 clamp(32px,4vw,48px)/1.1 var(--serif)}
+.specimen.sans p{font-size:24px;font-weight:500}
+.specimen.mono p{font:400 16px/1.5 var(--mono)}
+.palette{display:grid;grid-template-columns:1fr 1fr;gap:48px}
+.swatches{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.swatch{min-width:0;display:grid;gap:4px}
+.swatch .chip{display:block;width:100%;height:52px;border:1px solid var(--rule);border-radius:8px;background:var(--chip)}
+.swatch span:nth-child(2){font-size:var(--type-control);font-weight:600}
+.swatch small{color:var(--muted)}
+.flow{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.flow li{border-top:1px solid var(--rule);padding-top:16px}
+.flow .glyph{color:var(--sienna);margin-bottom:12px}
+.bottom{border-top:1px solid var(--rule);color:var(--muted);font-size:var(--type-control);padding-block:16px}
+@media(max-width:1080px){
+  .wrap{width:min(100% - 56px,1240px)}
+  .hero{gap:28px;grid-template-columns:minmax(228px,.75fr) minmax(0,1.65fr)}
+  .hero{--type-headline:clamp(56px,7vw,92px)}
+}
+@media(max-width:840px){
+  .hero{grid-template-columns:1fr;padding-block:36px 48px}
+  .hero{--type-headline:clamp(58px,10vw,85px)}
+  .intro p:not(.eyebrow){max-width:44ch}
+  .identity,.palette{gap:24px}
+  .swatches{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .wrap{width:calc(100% - 32px)}
+  .top .wrap{min-height:60px;gap:12px}
+  .brand{font-size:28px}
+  .brand svg{width:28px;height:28px}
+  nav{gap:12px}
+  nav a{font-size:var(--type-small)}
+  .nav-flow{display:none}
+  .hero{gap:24px}
+  .preview-controls button{padding-inline:8px;font-size:var(--type-control)}
+  .preview-controls .theme{gap:4px}
+  .window{min-height:384px}
+  .row{padding-right:8px}
+  .row:before{width:16px;padding-inline:8px}
+  .titlebar,.status{padding-inline:8px}
+  .titlebar{gap:8px}
+  .tools,.status-side{gap:8px}
+  .editor-view.markdown{grid-template-columns:1fr}
+  .markdown-render{border-left:0;border-top:1px solid var(--edge);padding:16px}
+  .markdown-render h3{font-size:32px}
+  .identity,.palette,.flow{grid-template-columns:1fr}
+  .swatches{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .design-section{padding-block:32px 40px}
+  .section-heading{font-size:44px}
+}
+@media(max-width:440px){
+  .preview-controls .theme span{display:none}
+}
+</style>
+</head>
+<body id="top">
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="icon-mark" viewBox="0 0 96 96">
+    <rect width="96" height="96" rx="22" fill="#284939"/>
+    <path d="M29 21h25l16 16v33a5 5 0 0 1-5 5H29a5 5 0 0 1-5-5V26a5 5 0 0 1 5-5Z" fill="#FFF4DC"/>
+    <path d="M54 21v16h16" fill="#D9CEAC"/>
+    <path d="M34 46h15m-15 10h12m-12 10h22" stroke="#284939" stroke-width="3" stroke-linecap="round"/>
+    <path d="M52 49v14" stroke="#9F402A" stroke-width="3.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20 15a8.5 8.5 0 0 1-11-11A8.5 8.5 0 1 0 20 15Z"/></symbol>
+  <symbol id="icon-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h4"/></symbol>
+  <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 7h7l2 2h9l-3 10H3zM3 7V5h7l2 2h6"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></symbol>
+  <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M6 15 16 5l3 3L9 18l-4 1 1-4zm8-8 3 3"/></symbol>
+  <symbol id="icon-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v6h7V4M8 20v-6h8v6"/></symbol>
+</svg>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top"><svg aria-hidden="true"><use href="#icon-mark"></use></svg>Foldrest</a>
+    <nav aria-label="Proposal sections"><a href="#mockups">Mockups</a><a href="#identity">Identity</a><a class="nav-flow" href="#flow">File flow</a></nav>
+  </div>
+</header>
+<main class="wrap">
+  <section class="hero" id="mockups" aria-labelledby="proposal-title">
+    <div class="intro">
+      <p class="eyebrow">macOS design proposal</p>
+      <h1 id="proposal-title">A quiet place<br>to edit.</h1>
+      <p>Open a Python script, a Markdown note, or any plain-text file. Make your edit and get back to what you were doing.</p>
+    </div>
+    <figure class="preview">
+      <div class="preview-controls">
+        <div class="states" role="group" aria-label="Editor mockups">
+          <button type="button" data-view="python" aria-pressed="true" aria-controls="editor-window">Python</button>
+          <button type="button" data-view="markdown" aria-pressed="false" aria-controls="editor-window">Markdown</button>
+          <button type="button" data-view="text" aria-label="Plain text" aria-pressed="false" aria-controls="editor-window">Text</button>
+          <button type="button" data-view="welcome" aria-pressed="false" aria-controls="editor-window">Welcome</button>
+        </div>
+        <button type="button" class="theme" aria-label="Dark mode" aria-pressed="false" aria-controls="editor-window"><svg class="glyph" aria-hidden="true"><use href="#icon-moon"></use></svg><span>Dark</span></button>
+      </div>
+      <div class="window" id="editor-window" data-theme="light" aria-label="Foldrest editor mockup">
+        <div class="titlebar">
+          <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="file-label"><svg class="glyph" aria-hidden="true"><use href="#icon-file"></use></svg><span id="filename">clean_titles.py</span></div>
+          <div class="tools" id="title-tools" aria-hidden="true"><svg class="glyph"><use href="#icon-folder"></use></svg><svg class="glyph"><use href="#icon-search"></use></svg></div>
+        </div>
+        <div class="editor-view python" data-panel="python">
+          <pre class="code" tabindex="0" aria-label="Python code sample"><code><span class="row" data-line="1"><span class="keyword">from</span> pathlib <span class="keyword">import</span> Path</span><span class="row" data-line="2"> </span><span class="row" data-line="3"><span class="comment"># Pull titles from a reading list.</span></span><span class="row" data-line="4"><span class="keyword">def</span> <span class="function">clean_titles</span>(path: Path):</span><span class="row" data-line="5">    text = path.<span class="function">read_text</span>(encoding=<span class="string">"utf-8"</span>)</span><span class="row current" data-line="6">    <span class="keyword">return</span> [t.<span class="function">strip</span>() <span class="keyword">for</span> t <span class="keyword">in</span> text.<span class="function">splitlines</span>() <span class="keyword">if</span> t.<span class="function">strip</span>()]<span class="caret" aria-hidden="true"></span></span><span class="row" data-line="7"> </span><span class="row" data-line="8">titles = <span class="function">clean_titles</span>(Path(<span class="string">"reading-list.txt"</span>))</span><span class="row" data-line="9"><span class="keyword">for</span> title <span class="keyword">in</span> titles[:<span class="number">5</span>]:</span><span class="row" data-line="10">    <span class="function">print</span>(title)</span></code></pre>
+        </div>
+        <div class="editor-view markdown" data-panel="markdown" hidden>
+          <pre class="code" tabindex="0" aria-label="Markdown source sample"><code><span class="row" data-line="1"><span class="keyword"># Reading notes</span></span><span class="row" data-line="2"> </span><span class="row" data-line="3">A few thoughts for Friday.</span><span class="row" data-line="4"> </span><span class="row" data-line="5"><span class="keyword">-</span> Add the new chapter.</span><span class="row current" data-line="6"><span class="keyword">-</span> Check the book titles.<span class="caret" aria-hidden="true"></span></span></code></pre>
+          <section class="markdown-render" aria-label="Rendered Markdown sample">
+            <p class="caption">Preview</p><h3>Reading notes</h3><p>A few thoughts for Friday.</p><ul><li>Add the new chapter.</li><li>Check the book titles.</li></ul>
+          </section>
+        </div>
+        <div class="editor-view plain-text" data-panel="text" hidden>
+          <p>Friday handoff</p>
+          <p>The updated reading list is ready. Send it to the book club after checking the last two titles.</p>
+          <p>Bring the spare copy on Saturday.<span class="caret" aria-hidden="true"></span></p>
+        </div>
+        <div class="editor-view welcome" data-panel="welcome" hidden>
+          <div><svg class="mark" aria-hidden="true"><use href="#icon-mark"></use></svg><h3>Open a file</h3><p>Choose a file or drop it here.</p><span class="open-example">Open file… <kbd>⌘ O</kbd></span></div>
+        </div>
+        <div class="status" id="editor-status">
+          <div class="status-side"><span id="position">Ln 6, Col 63</span><span id="indent">Spaces 4</span></div>
+          <div class="status-side"><span>UTF-8</span><span>LF</span><span id="language">Python</span><span id="save-status" class="dirty">Unsaved</span></div>
+        </div>
+      </div>
+      <figcaption class="caption" id="preview-caption" aria-live="polite">Python · Active line, syntax colors, and an unsaved change.</figcaption>
+    </figure>
+  </section>
+  <section class="design-section" id="identity" aria-labelledby="identity-title">
+    <p class="eyebrow">Visual identity</p><h2 class="section-heading" id="identity-title">The folded page</h2>
+    <div class="identity">
+      <div>
+        <figure class="logo-board" aria-label="Foldrest logo"><svg aria-hidden="true"><use href="#icon-mark"></use></svg><span>Foldrest</span></figure>
+        <div class="icon-scale" aria-label="App icon at three sizes">
+          <div><svg width="16" height="16" aria-hidden="true"><use href="#icon-mark"></use></svg><small>16 px</small></div>
+          <div><svg width="32" height="32" aria-hidden="true"><use href="#icon-mark"></use></svg><small>32 px</small></div>
+          <div><svg width="64" height="64" aria-hidden="true"><use href="#icon-mark"></use></svg><small>64 px</small></div>
+        </div>
+        <p>The folded corner recalls a page. The terracotta caret marks the place where an edit begins.</p>
+      </div>
+      <div>
+        <h3>Type in use</h3>
+        <div class="faces">
+          <div class="specimen serif"><span>Instrument Serif · Wordmark and display</span><p>A quiet place to edit.</p></div>
+          <div class="specimen sans"><span>Instrument Sans · Menus and controls</span><p>Save changes to reading-notes.md?</p></div>
+          <div class="specimen mono"><span>Source Code Pro · File contents</span><p>0O 1lI {} [] =&gt;</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="design-section" aria-labelledby="palette-title">
+    <p class="eyebrow">Editor colors</p><h2 class="section-heading" id="palette-title">Paper by day, charcoal by night</h2>
+    <div class="palette">
+      <div class="theme-group"><h3>Light</h3><div class="swatches">
+        <div class="swatch"><span class="chip" style="--chip:var(--paper)"></span><span>Paper</span><small>#FFFCF5</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--linen)"></span><span>Linen</span><small>#F7F1E6</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--ink)"></span><span>Ink</span><small>#24372E</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--sienna)"></span><span>Sienna</span><small>#9F402A</small></div>
+      </div></div>
+      <div class="theme-group"><h3>Dark</h3><div class="swatches">
+        <div class="swatch"><span class="chip" style="--chip:var(--night)"></span><span>Charcoal</span><small>#222823</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--night-chrome)"></span><span>Bark</span><small>#2A322B</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--night-ink)"></span><span>Ivory</span><small>#EEE8D8</small></div>
+        <div class="swatch"><span class="chip" style="--chip:var(--apricot)"></span><span>Apricot</span><small>#F6AF83</small></div>
+      </div></div>
+    </div>
+  </section>
+  <section class="design-section" id="flow" aria-labelledby="flow-title">
+    <p class="eyebrow">File flow</p><h2 class="section-heading" id="flow-title">Open, edit, save</h2>
+    <ol class="flow">
+      <li><svg class="glyph" aria-hidden="true"><use href="#icon-folder"></use></svg><h3>Open from Finder</h3><p>Use Open With, drag in a file, or press ⌘O.</p></li>
+      <li><svg class="glyph" aria-hidden="true"><use href="#icon-edit"></use></svg><h3>Start at the text</h3><p>The editor takes focus. Foldrest shows the detected language and lets you change it.</p></li>
+      <li><svg class="glyph" aria-hidden="true"><use href="#icon-save"></use></svg><h3>Save to the same file</h3><p>Press ⌘S. If you close with edits pending, choose Save, Don’t Save, or Cancel.</p></li>
+    </ol>
+  </section>
+</main>
+<footer class="bottom"><div class="wrap"><span>Foldrest</span><span>Interactive design mockup</span></div></footer>
+<script>
+const views = {
+  python: { file: 'clean_titles.py', language: 'Python', position: 'Ln 6, Col 63', indent: 'Spaces 4', dirty: true, caption: 'Python · Active line, syntax colors, and an unsaved change.' },
+  markdown: { file: 'reading-notes.md', language: 'Markdown', position: 'Ln 6, Col 25', indent: '', dirty: false, caption: 'Markdown · Source with an optional reading preview.' },
+  text: { file: 'friday-handoff.txt', language: 'Plain Text', position: 'Ln 5, Col 34', dirty: true, caption: 'Plain text · Soft wrapping, with the full width available for writing.' },
+  welcome: { file: 'Foldrest', caption: 'Welcome · Choose a file or drop one into the window.' }
+};
+const editor = document.querySelector('#editor-window');
+const buttons = [...document.querySelectorAll('[data-view]')];
+const panels = [...document.querySelectorAll('[data-panel]')];
+const theme = document.querySelector('.theme');
+
+function showView(name) {
+  const view = views[name];
+  const welcome = name === 'welcome';
+  for (const button of buttons) {
+    button.setAttribute('aria-pressed', String(button.dataset.view === name));
+  }
+  for (const panel of panels) {
+    panel.hidden = panel.dataset.panel !== name;
+  }
+  document.querySelector('#filename').textContent = view.file;
+  document.querySelector('#title-tools').hidden = welcome;
+  document.querySelector('#editor-status').hidden = welcome;
+  editor.style.gridTemplateRows = welcome ? 'auto minmax(0,1fr)' : '';
+  document.querySelector('#position').textContent = view.position ?? '';
+  document.querySelector('#indent').textContent = view.indent ?? '';
+  document.querySelector('#indent').hidden = !view.indent;
+  document.querySelector('#language').textContent = view.language ?? '';
+  const saveStatus = document.querySelector('#save-status');
+  saveStatus.textContent = view.dirty ? 'Unsaved' : 'Saved';
+  saveStatus.classList.toggle('dirty', Boolean(view.dirty));
+  document.querySelector('#preview-caption').textContent = view.caption;
+}
+for (const button of buttons) {
+  button.addEventListener('click', () => showView(button.dataset.view));
+}
+theme.addEventListener('click', () => {
+  const dark = editor.dataset.theme !== 'dark';
+  editor.dataset.theme = dark ? 'dark' : 'light';
+  theme.setAttribute('aria-pressed', String(dark));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title description">
+  <title id="title">Larik Text app icon</title>
+  <desc id="description">Three lines of writing and a copper insertion caret on a charcoal tile.</desc>
+  <rect x="3" y="3" width="90" height="90" rx="22" fill="#252525"/>
+  <rect x="3.5" y="3.5" width="89" height="89" rx="21.5" fill="none" stroke="#494745"/>
+  <path d="M25 31h46M25 48h28M25 65h39" fill="none" stroke="#f6eee2" stroke-width="6" stroke-linecap="round"/>
+  <path d="M65 41v14" fill="none" stroke="#e69a78" stroke-width="6" stroke-linecap="round"/>
+</svg>

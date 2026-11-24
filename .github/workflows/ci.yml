@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config libfontconfig1-dev libxkbcommon-dev \
+            libxkbcommon-x11-dev libvulkan-dev libwayland-dev libx11-xcb-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb-dev \
+            libasound2-dev libssl-dev
+
+      - name: Install the Metal toolchain
+        if: runner.os == 'macOS'
+        run: xcodebuild -downloadComponent MetalToolchain || true
+
+      - name: Point GPUI at the Windows shader compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $fxc = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\fxc.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          "GPUI_FXC_PATH=$($fxc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked

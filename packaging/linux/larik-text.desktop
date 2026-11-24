@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Larik Text
+GenericName=Text Editor
+Comment=A native tabbed editor for text and code files
+Exec=larik-text %F
+Icon=larik-text
+Terminal=false
+Categories=Utility;TextEditor;Development;
+StartupWMClass=app.larik.LarikText
+MimeType=text/plain;text/markdown;text/x-markdown;text/x-python;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-java;text/x-rust;text/x-go;text/x-shellscript;text/x-script.python;text/html;text/css;text/csv;text/xml;text/x-log;text/javascript;application/javascript;application/json;application/x-yaml;application/yaml;application/toml;application/xml;application/x-shellscript;application/sql;
