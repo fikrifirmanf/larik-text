@@ -35,6 +35,7 @@ struct Download {
 
 enum Handoff {
     /// A helper waits for this process to exit, swaps the app, and relaunches it.
+    #[cfg_attr(windows, allow(dead_code))]
     Restart,
     /// The package was handed to the system installer.
     #[cfg_attr(not(windows), allow(dead_code))]
